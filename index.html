@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="pt-br">
+<meta charset="utf-8">
+<title>Importar & Exportar para Página1</title>
+<style>
+  body{font-family:system-ui,Arial,sans-serif;margin:24px;background:#f7f7fb}
+  .card{background:#fff;border-radius:12px;padding:18px;box-shadow:0 8px 24px rgba(0,0,0,.07);max-width:980px}
+  h1{margin:0 0 8px;font-size:20px}
+  .row{display:flex;gap:10px;align-items:center;margin:12px 0;flex-wrap:wrap}
+  input[type=text]{flex:1;padding:10px 12px;border:1px solid #ddd;border-radius:10px;min-width:360px}
+  button{padding:10px 14px;border:0;border-radius:10px;background:#2e3094;color:#fff;cursor:pointer;font-weight:600}
+  button.secondary{background:#0c7c59}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  #status{margin-top:12px;padding:10px 12px;border-left:4px solid #2e3094;background:#eef1ff;border-radius:8px;display:none}
+  .muted{color:#666;font-size:12px}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid #eee;padding:8px 10px;font-size:13px;text-align:left}
+  th{background:#f1f4ff}
+  ul{margin:8px 0 0 18px}
+</style>
+<div class="card">
+  <h1>Exportação de Dados para o Ezchat</h1>
+  <div class="row">
+    <input id="sheetUrl" type="text" placeholder="Cole a URL da planilha (com #gid da aba atual)">
+    <button id="btnImport" onclick="importar()">Importar</button>
+    <button id="btnExport" class="secondary" onclick="exportar()" disabled>Exportar</button>
+  </div>
+  <div class="muted">A aba usada é a da URL (parâmetro <code>gid</code>). Leitura a partir da linha <b>11</b>.</div>
+  <div id="status"></div>
+  <div id="meta" class="muted" style="margin-top:6px;"></div>
+  <div id="previewList"></div>
+  <div id="previewTable"></div>
+</div>
+<script>
+  // 🔧 Cole aqui a URL /exec do Apps Script:
+  const API_URL   = 'https://script.google.com/macros/s/SEU_DEPLOY_ID/exec';
+  const API_TOKEN = ''; // se configurou token no GAS, preencha
+
+  let previewRows = [];
+
+  function importar() {
+    const url = document.getElementById('sheetUrl').value.trim();
+    setStatus('⏳ Importando…'); setExportEnabled(false);
+    const qs = new URLSearchParams({ op:'preview', sheetUrl:url, startRow:'11', limit:'500' });
+    if (API_TOKEN) qs.append('token', API_TOKEN);
+
+    fetch(`${API_URL}?${qs.toString()}`)
+      .then(r => r.json())
+      .then(res => {
+        if (!res || !res.rows) throw new Error(res && res.error ? res.error : 'Falha no preview');
+        previewRows = res.rows;
+        setStatus(`🔎 Aba: ${res.sheetName}. Linhas após 11: ${res.totalRows}. Válidas: ${previewRows.length}.`);
+        document.getElementById('meta').textContent = `Aba: ${res.sheetName} • Total: ${res.totalRows}`;
+        renderPreview(previewRows);
+        setExportEnabled(previewRows.length > 0);
+      })
+      .catch(err => setStatus('❌ ' + err.message));
+  }
+
+  function exportar() {
+    if (!previewRows.length) return setStatus('ℹ️ Nada para exportar. Importe primeiro.');
+    setStatus('⏳ Exportando…'); setExportEnabled(false);
+
+    const body = new URLSearchParams({ op:'export', rows: JSON.stringify(previewRows) });
+    if (API_TOKEN) body.append('token', API_TOKEN);
+
+    fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      body
+    })
+    .then(r => r.json())
+    .then(res => {
+      if (!res || res.ok !== true) throw new Error(res && res.error ? res.error : 'Falha na exportação');
+      setStatus(`🎉 Inseridas: ${res.inseridas} • Já existiam: ${res.jaExistiam}`);
+      setExportEnabled(true);
+    })
+    .catch(err => setStatus('❌ ' + err.message));
+  }
+
+  function renderPreview(rows) {
+    const listEl = document.getElementById('previewList');
+    const first = rows.slice(0, 10);
+    listEl.innerHTML = first.length
+      ? `<p><b>Lista (10 primeiras):</b></p><ul>${first.map(r =>
+          `<li>${esc(r.nome)} — ${esc(r.tel)} — <b>${esc(r.dia)} ${esc(r.hora)}</b> — ${esc(r.status)}</li>`
+        ).join('')}</ul>`
+      : '<p class="muted">Sem linhas válidas.</p>';
+
+    const tableEl = document.getElementById('previewTable');
+    if (!rows.length) { tableEl.innerHTML = ''; return; }
+    const header = ['Nome','Telefone','Status','Dia','Hora'];
+    const trs = rows.map(r => `<tr>
+      <td>${esc(r.nome)}</td><td>${esc(r.tel)}</td><td>${esc(r.status)}</td><td>${esc(r.dia)}</td><td>${esc(r.hora)}</td>
+    </tr>`).join('');
+    tableEl.innerHTML = `<table>
+      <thead><tr>${header.map(h=>`<th>${h}</th>`).join('')}</tr></thead>
+      <tbody>${trs}</tbody>
+    </table>`;
+  }
+
+  function setStatus(msg){ const el=document.getElementById('status'); el.textContent=msg; el.style.display='block'; }
+  function setExportEnabled(on){ document.getElementById('btnExport').disabled = !on; }
+  function esc(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
+</script>
