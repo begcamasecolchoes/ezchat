@@ -33,21 +33,28 @@
 </div>
 <script>
   // 🔧 Cole aqui a URL /exec do Apps Script:
-  const API_URL   = 'https://script.google.com/macros/s/SEU_DEPLOY_ID/exec';
-  const API_TOKEN = ''; // se configurou token no GAS, preencha
+  const API_URL   = 'https://script.google.com/macros/s/SEU_DEPLOY_ID/exec'; // 👈 TROCAR
+  // Se ativou token no servidor, use o MESMO valor aqui:
+  const API_TOKEN = ''; // ex.: 'segredo-super' (ou deixe '' para não enviar)
 
   let previewRows = [];
 
   function importar() {
     const url = document.getElementById('sheetUrl').value.trim();
+    if (!url) return setStatus('ℹ️ Cole a URL da planilha (com #gid).');
+
     setStatus('⏳ Importando…'); setExportEnabled(false);
+
     const qs = new URLSearchParams({ op:'preview', sheetUrl:url, startRow:'11', limit:'500' });
     if (API_TOKEN) qs.append('token', API_TOKEN);
 
     fetch(`${API_URL}?${qs.toString()}`)
-      .then(r => r.json())
+      .then(r => {
+        if (!r.ok) throw new Error('Falha na chamada preview');
+        return r.json();
+      })
       .then(res => {
-        if (!res || !res.rows) throw new Error(res && res.error ? res.error : 'Falha no preview');
+        if (!res || res.ok !== true || !res.rows) throw new Error(res && res.error ? res.error : 'Falha no preview');
         previewRows = res.rows;
         setStatus(`🔎 Aba: ${res.sheetName}. Linhas após 11: ${res.totalRows}. Válidas: ${previewRows.length}.`);
         document.getElementById('meta').textContent = `Aba: ${res.sheetName} • Total: ${res.totalRows}`;
@@ -69,7 +76,10 @@
       headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
       body
     })
-    .then(r => r.json())
+    .then(r => {
+      if (!r.ok) throw new Error('Falha na chamada export');
+      return r.json();
+    })
     .then(res => {
       if (!res || res.ok !== true) throw new Error(res && res.error ? res.error : 'Falha na exportação');
       setStatus(`🎉 Inseridas: ${res.inseridas} • Já existiam: ${res.jaExistiam}`);
@@ -103,3 +113,4 @@
   function setExportEnabled(on){ document.getElementById('btnExport').disabled = !on; }
   function esc(s){ return (s||'').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])); }
 </script>
+</html>
